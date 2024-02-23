@@ -59,6 +59,9 @@ class ConditionBase:
     def __str__(self):
         return f'{self.__class__.__name__}({self.params})'
 
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and self.params == other.params
+
 # Derived condition classes
 class ConditionFloatInLastNWords(ConditionBase):
     """Condition to check if a float is within the last n words."""
@@ -126,6 +129,8 @@ class ConditionFloatOrPercentInLastNWords(ConditionFloatInLastNWords):
 class NegativeCondition(ConditionBase):
     """Inverts the result of another condition."""
     def __init__(self, positive_condition):
+        if not isinstance(positive_condition, ConditionBase):
+            raise ValueError('Positive condition must be an instance of ConditionBase')
         super().__init__(positive_condition.params)
         self.positive_condition = positive_condition
 
@@ -134,6 +139,20 @@ class NegativeCondition(ConditionBase):
 
     def clean(self):
         self.positive_condition.clean()
+#Conditions factory
+def condition_factory(condition_name,params = None):
+    if condition_name == 'ConditionFloatInLastNWords':
+        return ConditionFloatInLastNWords(params)
+    elif condition_name == 'ConditionKeywordsInLastNWords':
+        return ConditionKeywordsInLastNWords(params)
+    elif condition_name == 'ConditionFloatPercentInLastNWords':
+        return ConditionFloatPercentInLastNWords(params)
+    elif condition_name == 'ConditionFloatOrPercentInLastNWords':
+        return ConditionFloatOrPercentInLastNWords(params)
+    elif condition_name == 'NegativeCondition':
+        return NegativeCondition(params)
+    else:
+        raise Exception(f'Unknown condition name {condition_name}')
 
 # Example of usage and testing
 if __name__ == "__main__":
