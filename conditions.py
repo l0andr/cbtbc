@@ -4,91 +4,67 @@
     Each condition on each step obtain one word and return boolean value
 '''
 
-
-import re
-
-# Utility functions
-def is_float(value):
-    """Check if the input value can be converted to a float."""
+#Some utility functions
+def isfloat(value):
     try:
         float(value)
         return True
     except ValueError:
         return False
 
-def is_percent(value):
-    """Check if the input value is a percent (ends with '%')."""
-    if value.endswith('%'):
-        try:
-            float(value[:-1])
-            return True
-        except ValueError:
-            return False
-    return False
-
-# Base condition class
-class ConditionBase:
-    """Base class for conditions with common functionalities."""
-    mandatory_params = []
-
-    def __init__(self, params=None):
-        if params is None:
-            params = {}
-        self.params = params
-        self.validate_params()
-        self.error_handler = self.default_error_handler
-
-    def validate_params(self):
-        """Validate mandatory parameters."""
-        for param in self.mandatory_params:
-            if param not in self.params:
-                self.default_error_handler(f'No required parameter [{param}]')
-
-    def default_error_handler(self, msg):
-        """Default error handler raising an exception with a message."""
-        raise ValueError(msg)
-
-    def check(self, string):
-        """Check condition against the input string."""
+def ispercent(value):
+    #check the last symbol is %
+    if value[-1] != '%':
+        return False
+    #check the rest is float
+    try:
+        float(value[:-1])
+        return True
+    except ValueError:
         return False
 
-    def clean(self):
-        """Clean or reset the condition state."""
-        raise NotImplementedError('Clean method should be implemented in child class.')
 
+class condition_base():
+    mandatory_params = []
+    def __init__(self,params = None):
+        for param in self.mandatory_params:
+            if param not in params:
+                self.default_error_handler(f'No required parameter [{param}] ')
+        self.params = params
+        self.error_handler = self.default_error_handler
+    def default_error_handler(self,msg):
+        raise Exception(msg)
+    def check(self, string):
+        return False
+    def clean(self):
+        raise NotImplementedError('clean method should be implemented in child class')
     def __str__(self):
         return f'{self.__class__.__name__}({self.params})'
 
-    def __eq__(self, other):
-        return self.__class__ == other.__class__ and self.params == other.params
-
-# Derived condition classes
-class ConditionFloatInLastNWords(ConditionBase):
-    """Condition to check if a float is within the last n words."""
+class condition_float_in_last_n_words(condition_base):
     mandatory_params = ['n_words']
-
-    def __init__(self, params=None):
+    def __init__(self,params = None):
         super().__init__(params)
         self.max_distance = self.params['n_words']
         self.last_distance = None
-
     def check(self, string):
-        if is_float(string):
+        if isfloat(string):
             self.last_distance = 0
         else:
             if self.last_distance is not None:
                 self.last_distance += 1
 
-        return self.last_distance is not None and self.last_distance < self.max_distance
-
+        if self.last_distance is not None and self.last_distance < self.max_distance:
+            return True
+        else:
+            return False
+    def __eq__(self, other):
+        return self.params == other.params and self.__class__ == other.__class__
     def clean(self):
         self.last_distance = None
-
-class ConditionKeywordsInLastNWords(ConditionBase):
-    """Condition to check if any of the specified keywords are within the last n words."""
-    mandatory_params = ['n_words', 'keywords']
-
-    def __init__(self, params=None):
+class condition_keywords_in_last_n_words(condition_base):
+    mandatory_params = ['n_words','keywords']
+    def __init__(self,params = None):
         super().__init__(params)
         self.max_distance = self.params['n_words']
         self.keywords = self.params['keywords']
@@ -101,71 +77,52 @@ class ConditionKeywordsInLastNWords(ConditionBase):
             if self.last_distance is not None:
                 self.last_distance += 1
 
-        return self.last_distance is not None and self.last_distance < self.max_distance
-
+        if self.last_distance is not None and self.last_distance < self.max_distance:
+            return True
+        else:
+            return False
     def clean(self):
         self.last_distance = None
-
-class ConditionFloatPercentInLastNWords(ConditionFloatInLastNWords):
-    """Condition to check if a percent is within the last n words, inheriting from ConditionFloatInLastNWords."""
+class condition_floatpercent_in_last_n_words(condition_float_in_last_n_words):
     def check(self, string):
-        if is_percent(string):
+        if ispercent(string):
             self.last_distance = 0
         else:
             if self.last_distance is not None:
                 self.last_distance += 1
-        return super().check(string)
-
-class ConditionFloatOrPercentInLastNWords(ConditionFloatInLastNWords):
-    """Condition to check if either a float or a percent is within the last n words."""
+        if self.last_distance is not None and self.last_distance < self.max_distance:
+            return True
+        else:
+            return False
+class condition_floatorpercent_in_last_n_words(condition_float_in_last_n_words):
     def check(self, string):
-        if is_percent(string) or is_float(string):
+        if ispercent(string) or isfloat(string):
             self.last_distance = 0
         else:
             if self.last_distance is not None:
                 self.last_distance += 1
-        return super().check(string)
+        if self.last_distance is not None and self.last_distance < self.max_distance:
+            return True
+        else:
+            return False
 
-class NegativeCondition(ConditionBase):
-    """Inverts the result of another condition."""
-    def __init__(self, positive_condition):
-        if not isinstance(positive_condition, ConditionBase):
-            raise ValueError('Positive condition must be an instance of ConditionBase')
-        super().__init__(positive_condition.params)
-        self.positive_condition = positive_condition
-
+class negative_condition(condition_base):
+    def __init__(self,positive_conditions:condition_base):
+        self.positive_conditions = positive_conditions
+        self.params = positive_conditions.params
     def check(self, string):
-        return not self.positive_condition.check(string)
-
+        return not self.positive_conditions.check(string)
     def clean(self):
-        self.positive_condition.clean()
+        self.positive_conditions.clean()
 #Conditions factory
 def condition_factory(condition_name,params = None):
-    if condition_name == 'ConditionFloatInLastNWords':
-        return ConditionFloatInLastNWords(params)
-    elif condition_name == 'ConditionKeywordsInLastNWords':
-        return ConditionKeywordsInLastNWords(params)
-    elif condition_name == 'ConditionFloatPercentInLastNWords':
-        return ConditionFloatPercentInLastNWords(params)
-    elif condition_name == 'ConditionFloatOrPercentInLastNWords':
-        return ConditionFloatOrPercentInLastNWords(params)
-    elif condition_name == 'NegativeCondition':
-        return NegativeCondition(params)
+    if condition_name == 'condition_float_in_last_n_words':
+        return condition_float_in_last_n_words(params)
+    elif condition_name == 'condition_keywords_in_last_n_words':
+        return condition_keywords_in_last_n_words(params)
+    elif condition_name == 'condition_floatpercent_in_last_n_words':
+        return condition_floatpercent_in_last_n_words(params)
+    elif condition_name == 'condition_floatorpercent_in_last_n_words':
+        return condition_floatorpercent_in_last_n_words(params)
     else:
         raise Exception(f'Unknown condition name {condition_name}')
-
-# Example of usage and testing
-if __name__ == "__main__":
-    test_strings = ["The price is 100.00$","100.00% of success", "Special rates is 100.00%"]
-    splited_words = [string.split() for string in test_strings]
-    test_conditions = [ConditionFloatInLastNWords({'n_words':3}),
-                       ConditionFloatPercentInLastNWords({'n_words':3}),
-                       ConditionKeywordsInLastNWords({'n_words':3,'keywords':['price','rates']}),
-                       NegativeCondition(ConditionKeywordsInLastNWords({'n_words':3,'keywords':['price','rates']}))]
-    for cond in test_conditions:
-        print(cond)
-        for words in splited_words:
-            for word in words:
-                print(cond.check(word),end=' ')
-            print()
-
